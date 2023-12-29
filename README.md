@@ -15,7 +15,7 @@ $ pip install auto-py-to-exe
 ### Installing via [GitHub](https://github.com/IBengy/VoxelConverter)
 
 ```
-$ git clone https://github.com/brentvollebregt/auto-py-to-exe.git
+$ git clone https://github.com/IBengy/VoxelConverter.git
 $ cd VoxelConverter
 $ python -m voxelizer.py
 ```
