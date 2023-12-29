@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+ <title>voxelizer Convert</title>
+ <link rel="shortcut icon" href="/images/favicon.png">
+
+ <style>
+ 
+  html, body {
+   width:100%;
+   height:100%;
+   background: #ffffff;
+  } 
+
+  body {
+   color: #444;
+   height: 100%;
+  }
+
+  * {
+   margin:0;
+   padding:0;
+  }
+
+ </style>
+
+
+<script type="x-shader/x-vertex" id="vertex-shader">
+
+  attribute vec3 aVertexPosition;
+  attribute vec4 aColor;
+
+  uniform   mat4 uPMatrix;
+  uniform   mat4 uMVMatrix;
+  uniform   mat3 uNMatrix;
+
+  varying   vec3 vVertexPosition;
+  varying   vec4 vColor;
+  varying   mat3 vNMatrix;
+  
+  void main(void) {
+   float sign, divider, ambientOcclusion;
+   vec4  vertexPosition; 
+
+   vertexPosition    = uMVMatrix * vec4( aVertexPosition, 1.0 );
+   vVertexPosition   = vertexPosition.xyz / vertexPosition.w;
+   vColor            = aColor;
+   ambientOcclusion  = floor( ( ( vColor.r / 2.0 ) - floor( vColor.r / 2.0 ) ) + 0.75 );
+   vColor           /= 255.0;
+   vColor           *= 0.70 + ( ( 1.0 - ambientOcclusion ) * 0.30 );
+   vNMatrix          = uNMatrix;
+
+   gl_Position       = uPMatrix * vertexPosition;
+  }
+
+</script>
+
+<script type="x-shader/x-fragment" id="fragment-shader">
+
+  #ifdef GL_FRAGMENT_PRECISION_HIGH
+   precision highp float;
+  #else
+   precision mediump float;
+  #endif
+
+  #pragma debug(off)
+  #pragma optimize(on) 
+
+  uniform   vec3      uLightPosition;
+  uniform   vec3      uLightColor;
+  uniform   vec3      uMaterialAmbient;
+  uniform   vec3      uMaterialDiffuse;
+  uniform   vec3      uNormalPosition;
+  uniform   float     uAttenuation;
+
+  varying   vec3      vVertexPosition;
+  varying   vec4      vColor;
+  varying   mat3      vNMatrix;
+    
+  //***************************************************************************
+  //                                                                          
+  //***************************************************************************
+
+  void main(void) {
+   float x, y, a, dis, minDis, ambientOcclusion;
+   float ambient, diffuse, rdotv, spc, attenuation;
+   vec3  vectorToLight, reflection, normalPosition;
+   vec3  color, matColor; 
+
+   spc             = length( uLightPosition - vVertexPosition );
+   attenuation     = 1.0 / ( 1.0 + uAttenuation + ( uAttenuation * spc ) + ( uAttenuation * spc * spc ) );
+   vectorToLight   = normalize( uLightPosition - vVertexPosition );
+
+   normalPosition  = normalize( vNMatrix * vec3( uNormalPosition ) );
+
+   diffuse         = max( dot( normalPosition, vectorToLight ), 0.0 );
+   reflection      = normalize( reflect( -vectorToLight, normalPosition ) );
+   rdotv           = max( dot( reflection, vec3( 0.0, 0.0, 1.0 ) ), 0.0 );
+
+   matColor        = vColor.rgb;
+
+   color           = ( uMaterialDiffuse - uMaterialAmbient ) * pow( diffuse, 1.25 );
+   color          *= matColor * uLightColor * pow( attenuation, 2.0 );
+   color          += uMaterialAmbient * matColor * uLightColor;
+
+   color           = min( color, 1.0 );
+
+   gl_FragColor    = vec4( color, 1.0 );
+  }
+
+</script>
+
+
+ <link rel="stylesheet" href="css/stylesheet27.css" media="all" />
+
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+ <script src="js/filesaver.js"></script>
+ <script src="js/gl-matrix-min.js"></script>
+ <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+</head>
+<body>
+
+
+ <div id="webgl-container">
+
+  <div id="texture_container"></div>
+
+  <div id="popup-texture">
+   <div id="popup-texture-text"></div>
+   <div id="popup-texture-options">
+    <div class="import_texture">
+     <input type="file" id="file_input_texture" accept="image/jpg,image/jpeg,image/jfif,image/webp,image/png,image/gif,image/bmp" />
+     <label for="file_input_texture">open file (.png/.jpg/.gif/.jfif/,.webp)</label>
+    </div>
+    <div id="file_input_skip_texture">skip texture</div>
+   </div>
+  </div>
+
+  <div id="voxel_info"></div> 
+  <div id="reset_view"></div>
+  <div id="toggle_settings"></div>
+  <div id="toggle_2d"></div>
+
+  <canvas id="webgl-context" >
+   <img id="source" src="images/poster.png" />
+  </canvas>
+
+  <div id="slices">
+   <div id="slice_content"></div>
+   <div id="slice_close"></div>
+   <div id="slice_download"></div>
+   <div id="slider_container_layer">
+   <div id="slider_layer"></div>
+  </div>
+  <div id="slice_voxel_info"></div>
+  <div id="slice_info"></div>
+  </div>
+
+  <div id="settings"></div>
+
+ </div>
+
+ <div id="view_gui"> 
+  <div id="gui_text">
+   <div id="voxels_number"></div>
+   <div id="shell_thickness"></div>
+   <div id="interval_number"></div>
+  </div>
+  <div id="gui_sliders">
+   <div id="slider_down"></div>
+   <div id="slider_voxels_container">
+    <div id="slider_voxels_container_background"></div>
+    <div id="slider_voxels"></div>
+   </div>
+   <div id="slider_up"></div>
+   <div id="slider_shell_thickness_container">
+    <div id="slider_shell_thickness_container_background"></div>
+    <div id="slider_shell_thickness"></div>
+   </div>
+   <div id="slider_interval_container">
+    <div id="slider_interval_container_background"></div>
+    <div id="slider_interval"></div>
+   </div>
+  </div>
+ </div> 
+
+ <div id="view_import_export"> <!-- import/export -->
+
+
+  <div id="view_import_container">
+
+   <div  class="import">
+    <input id="file_input" type="file" accept="text/plain,application/vnd.ms-pkistl,.obj,.stl,.vox,.qb,.bvx,.binvox,image/jpg,image/jpeg,image/png,image/gif,image/bmp" />
+    <label for="file_input">open file</label>
+   </div>
+
+   <div class="export">
+   
+    <div id="output_container">
+     <div id="file_output">save as obj</div>
+     <div id="file_output_options"></div>
+    </div>
+
+    <div id="export_progress"></div>
+
+   </div>
+  </div>
+
+
+  <div id="view_additional"></div>  
+
+
+  <div id="view_options">
+
+   <div id="export_options_container">
+
+   <section class="section" id="export_options">
+    <div class="export_option_container" title="export as obj file (triangles)">
+      <input type="radio" name="export_option" id="export_obj" checked>
+      <label for="export_obj"><span class="radio">.obj ( tris )</span></label>
+    </div>
+    <div class="export_option_container" title="export as obj file (quadrilaterals)">
+      <input type="radio" name="export_option" id="export_obj_II">
+      <label for="export_obj_II"><span class="radio">.obj ( quads )</span></label>
+    </div>
+    <div class="export_option_container" title="export as dae file, also known as collada">
+      <input type="radio" name="export_option" id="export_dae">
+      <label for="export_dae"><span class="radio">.dae ( tris )</span></label>
+    </div>
+    <div class="export_option_container" title="export as stl file">
+      <input type="radio" name="export_option" id="export_stl">
+      <label for="export_stl"><span class="radio">.stl</span></label>
+    </div>
+    <div class="export_option_container" title="export as schematic (minecraft)">
+      <input type="radio" name="export_option" id="export_schematic">
+      <label for="export_schematic"><span class="radio">.schematic</span></label>
+    </div>
+    <div class="export_option_container" title="export as blender python script">
+      <input type="radio" name="export_option" id="export_blender">
+      <label for="export_blender"><span class="radio">blender.py</span></label>
+    </div>
+    <div class="export_option_container" title="export as cinema4D python script">
+      <input type="radio" name="export_option" id="export_cinema_4d">
+      <label for="export_cinema_4d"><span class="radio">C4D.py</span></label>
+    </div>
+    <div class="export_option_container" title="export lookup table voxel as json file">
+      <input type="radio" name="export_option" id="export_json">
+      <label for="export_json"><span class="radio">.json</span></label>
+    </div>
+    <div class="export_option_container" title="export lookup table voxel as xml file">
+      <input type="radio" name="export_option" id="export_xml">
+      <label for="export_xml"><span class="radio">.xml</span></label>
+    </div>
+    <div class="export_option_container" title="export lookup table voxel as python">
+      <input type="radio" name="export_option" id="export_python">
+      <label for="export_python"><span class="radio">.py</span></label>
+    </div>
+    <div class="export_option_container" title="export lookup table voxel as javascript">
+      <input type="radio" name="export_option" id="export_javascript">
+      <label for="export_javascript"><span class="radio">.js</span></label>
+    </div>
+    <div class="export_option_container" title="export lookup table voxel as typescript">
+      <input type="radio" name="export_option" id="export_typescript">
+      <label for="export_typescript"><span class="radio">.ts</span></label>
+    </div>
+    <div class="export_option_container" title="export as png">
+      <input type="radio" name="export_option" id="export_png">
+      <label for="export_png"><span class="radio">.png</span></label>
+    </div>
+    <div class="export_option_container" title="export as avorion">
+      <input type="radio" name="export_option" id="export_avorion_cubes">
+      <label for="export_avorion_cubes"><span class="radio">avorion</span></label>
+    </div>
+    <div class="export_option_container" title="export as avorion (smooth model)">
+      <input type="radio" name="export_option" id="export_avorion">
+      <label for="export_avorion"><span class="radio">avorion</span></label>
+    </div>
+    <div class="export_option_container" title="export as vox file (MagicaVoxels) maximum is 126 voxels">
+      <input type="radio" name="export_option" id="export_vox">
+      <label for="export_vox"><span class="radio">.vox</span></label>
+    </div>
+    <div class="export_option_container" title="export as openscad file">
+      <input type="radio" name="export_option" id="export_scad">
+      <label for="export_scad"><span class="radio">.scad</span></label>
+    </div>
+    <div class="export_option_container" title="export as qubicle voxel editor file">
+      <input type="radio" name="export_option" id="export_qb">
+      <label for="export_qb"><span class="radio">.qb</span></label>
+    </div>
+    <div class="export_option_container" title="export as plain text file">
+      <input type="radio" name="export_option" id="export_txt">
+      <label for="export_txt"><span class="radio">.txt</span></label>
+    </div>
+    <div class="export_option_container" title="export as pdf">
+      <input type="radio" name="export_option" id="export_pdf">
+      <label for="export_pdf"><span class="radio">.pdf</span></label>
+    </div>
+    <div class="export_option_container" title="export as multi-layer pdf">
+      <input type="radio" name="export_option" id="export_mdf">
+      <label for="export_mdf"><span class="radio">.pdf</span></label>
+    </div>
+    <div class="export_option_container" title="export as kvx">
+      <input type="radio" name="export_option" id="export_kvx">
+      <label for="export_kvx"><span class="radio">.kvx</span></label>
+    </div>
+    <div class="export_option_container" title="export as nodeoccjs">
+      <input type="radio" name="export_option" id="export_ocj">
+      <label for="export_ocj"><span class="radio">.occ</span></label>
+    </div>
+    <div class="export_option_container" title="export as nodeocc">
+      <input type="radio" name="export_option" id="export_occ">
+      <label for="export_occ"><span class="radio">.occ</span></label>
+    </div>
+    <div class="export_option_container" title="export as isometric pixel art">
+      <input type="radio" name="export_option" id="export_pix">
+      <label for="export_pix"><span class="radio">pixel art</span></label>
+    </div>
+    <div class="export_option_container" title="export as binvox">
+      <input type="radio" name="export_option" id="export_binvox">
+      <label for="export_binvox"><span class="radio">.binvox</span></label>
+    </div>
+    <div class="export_option_container" title="export as sprite stack ( .png )">
+      <input type="radio" name="export_option" id="export_sprite_stack">
+      <label for="export_sprite_stack"><span class="radio">sprite stack</span></label>
+    </div>
+    <div class="export_option_container" title="export as hexahedral ( .vtk )">
+      <input type="radio" name="export_option" id="export_vtk">
+      <label for="export_vtk"><span class="radio">hexahedral</span></label>
+    </div>
+    <div class="export_option_container" title="export as povray ( .pov )">
+      <input type="radio" name="export_option" id="export_pov">
+      <label for="export_pov"><span class="radio">povray</span></label>
+    </div>
+    <div class="export_option_container" title="export as series of pngs images">
+      <input type="radio" name="export_option" id="export_img_sequence">
+      <label for="export_img_sequence"><span class="radio">img seq.</span></label>
+    </div>
+
+    <div class="export_divider">Export as Single Object</div>
+
+    <div class="export_option_container" title="export as obj">
+      <input type="radio" name="export_option" id="export_obj_single_object">
+      <label for="export_obj_single_object"><span class="radio">obj ( tris )</span></label>
+    </div>
+    <div class="export_option_container" title="export as obj">
+      <input type="radio" name="export_option" id="export_obj_II_single_object">
+      <label for="export_obj_II_single_object"><span class="radio">obj ( quads )</span></label>
+    </div>
+    <div class="export_option_container" title="export as dae">
+      <input type="radio" name="export_option" id="export_dae_single_object">
+      <label for="export_dae_single_object"><span class="radio">dae ( tris )</span></label>
+    </div>
+    <div class="export_option_container" title="export as glb">
+      <input type="radio" name="export_option" id="export_glb">
+      <label for="export_glb"><span class="radio">glb</span></label>
+    </div>
+    <div class="export_option_container" title="export as schematic (json)">
+      <input type="radio" name="export_option" id="export_minecraft">
+      <label for="export_minecraft"><span class="radio">minecraft</span></label>
+    </div>
+    <div class="export_option_container" title="export as bvx">
+      <input type="radio" name="export_option" id="export_bvx">
+      <label for="export_bvx"><span class="radio">bvx</span></label>
+    </div>
+
+
+  </section>
+   </div> 
+  </div>
+
+
+
+
+ </div> <!-- end import/export -->
+
+
+
+
+ <script src="js/pako_deflate.min.js"></script>
+ <script src="js/jspdf.min.js"></script>
+ <script src="js/deploy27.js"></script>
+
+<div style="padding: 10px 10px 30px 10px; text-align: right; display: block"><li><a href="https://drububu.com/">drububu.com/arjan westerdiep</a></li>
+  <a href="https://github.com/IBengy">
+    <button style='font-size:20px'>Follow <i class='fa fa-github'></i></button>
+</div>
+
+</body>
+</html>
