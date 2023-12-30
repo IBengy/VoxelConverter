@@ -10,7 +10,7 @@ Need A Python 3.1 To Latest
 
 And Need A One Library: Eel
 ```
-$ pip install auto-py-to-exe
+$ pip install eel
 ```
 ### Installing via [GitHub](https://github.com/IBengy/VoxelConverter)
 
